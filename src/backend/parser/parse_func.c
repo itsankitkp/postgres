@@ -835,15 +835,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		wfunc->winagg = (fdresult == FUNCDETAIL_AGGREGATE);
 		wfunc->aggfilter = agg_filter;
 		wfunc->location = location;
-
-		/*
-		 * agg_star is allowed for aggregate functions but distinct isn't
-		 */
-		if (agg_distinct)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("DISTINCT is not implemented for window functions"),
-					 parser_errposition(pstate, location)));
+		wfunc->aggdistinct = agg_distinct;
 
 		/*
 		 * Reject attempt to call a parameterless aggregate without (*)
@@ -854,6 +846,15 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("%s(*) must be used to call a parameterless aggregate function",
 							NameListToString(funcname)),
+					 parser_errposition(pstate, location)));
+
+		/*
+		 * Distinct is not implemented for aggregates with filter
+		 */
+		if (agg_distinct && over->orderClause)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("DISTINCT is not implemented for aggregate functions with ORDER BY"),
 					 parser_errposition(pstate, location)));
 
 		/*
