@@ -154,6 +154,25 @@ typedef struct WindowStatePerAggData
 
 	int64		transValueCount;	/* number of currently-aggregated rows */
 
+	/* number of sorting columns to consider in DISTINCT comparisons */
+	/* (this is either zero or the same as numSortCols) */
+	int			numDistinctCols;
+
+	TupleTableSlot *sortslot;	/* current input tuple */
+	TupleTableSlot *uniqslot;	/* used for multi-column DISTINCT */
+	TupleDesc	sortdesc;		/* descriptor of input tuples */
+	Datum		lastdatum;		/* used for single-column DISTINCT */
+	bool		lastisnull;		/* used for single-column DISTINCT */
+	bool		haslast;		/* got a last value for DISTINCT check */
+	/*
+	 * Comparators for input columns --- only set/used when aggregate has
+	 * DISTINCT flag. equalfnOne version is used for single-column
+	 * comparisons, equalfnMulti for the case of multiple columns.
+	 */
+	FmgrInfo	equalfnOne;
+	ExprState  *equalfnMulti;
+	Tuplesortstate **sortstates;	/* sort objects, if DISTINCT or ORDER BY */
+
 	/* Data local to eval_windowaggregates() */
 	bool		restart;		/* need to restart this agg in this cycle? */
 } WindowStatePerAggData;
@@ -231,6 +250,7 @@ initialize_windowaggregate(WindowAggState *winstate,
 	peraggstate->transValueCount = 0;
 	peraggstate->resultValue = (Datum) 0;
 	peraggstate->resultValueIsNull = true;
+	fmgr_info(get_opcode(96), &peraggstate->equalfnOne);
 }
 
 /*
@@ -251,6 +271,9 @@ advance_windowaggregate(WindowAggState *winstate,
 	MemoryContext oldContext;
 	ExprContext *econtext = winstate->tmpcontext;
 	ExprState  *filter = wfuncstate->aggfilter;
+	bool		isDistinct = (peraggstate->numDistinctCols > 0);
+	Datum		newAbbrevVal = (Datum) 0;
+	Datum		oldAbbrevVal = (Datum) 0;
 
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
@@ -267,6 +290,9 @@ advance_windowaggregate(WindowAggState *winstate,
 		}
 	}
 
+	
+
+
 	/* We start from 1, since the 0th arg will be the transition value */
 	i = 1;
 	foreach(arg, wfuncstate->args)
@@ -275,7 +301,17 @@ advance_windowaggregate(WindowAggState *winstate,
 
 		fcinfo->args[i].value = ExecEvalExpr(argstate, econtext,
 											 &fcinfo->args[i].isnull);
+
+		if (DatumGetBool(FunctionCall2Coll(&peraggstate->equalfnOne,
+											 perfuncstate->winCollation,
+											 peraggstate->lastdatum, fcinfo->args[i].value))){
+			MemoryContextSwitchTo(oldContext);
+			return;
+		}
 		i++;
+
+		peraggstate->lastdatum = fcinfo->args[i].value;
+
 	}
 
 	if (peraggstate->transfn.fn_strict)
