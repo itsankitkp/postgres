@@ -558,6 +558,7 @@ typedef struct WindowFunc
 	/* true if argument list was really '*' */
 	bool		winstar pg_node_attr(query_jumble_ignore);
 	/* is function a simple aggregate? */
+	bool		aggdistinct;    /* do we need distinct values for aggregation? */
 	bool		winagg pg_node_attr(query_jumble_ignore);
 	/* token location, or -1 if unknown */
 	int			location;
