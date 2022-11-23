@@ -495,6 +495,7 @@ typedef struct WindowFunc
 	Index		winref;			/* index of associated WindowClause */
 	bool		winstar;		/* true if argument list was really '*' */
 	bool		winagg;			/* is function a simple aggregate? */
+	bool		aggdistinct;    /* do we need distinct values for aggregation? */
 	int			location;		/* token location, or -1 if unknown */
 } WindowFunc;
 
