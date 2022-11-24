@@ -154,10 +154,6 @@ typedef struct WindowStatePerAggData
 
 	int64		transValueCount;	/* number of currently-aggregated rows */
 
-	/* number of sorting columns to consider in DISTINCT comparisons */
-	/* (this is either zero or the same as numSortCols) */
-	int			numDistinctCols;
-
 	Datum		lastdatum;		/* used for single-column DISTINCT */
 	FmgrInfo	equalfnOne; /* single-column comparisons*/
 
@@ -237,6 +233,7 @@ initialize_windowaggregate(WindowAggState *winstate,
 	peraggstate->transValueIsNull = peraggstate->initValueIsNull;
 	peraggstate->transValueCount = 0;
 	peraggstate->resultValue = (Datum) 0;
+	peraggstate->lastdatum = (Datum) 0;
 	peraggstate->resultValueIsNull = true;
 	fmgr_info(get_opcode(96), &peraggstate->equalfnOne);
 }
@@ -291,9 +288,8 @@ advance_windowaggregate(WindowAggState *winstate,
 			return;
 		}
 		i++;
-
-		peraggstate->lastdatum = fcinfo->args[i].value;
-
+		
+		peraggstate->lastdatum = fcinfo->args[1].value;
 	}
 
 	if (peraggstate->transfn.fn_strict)
