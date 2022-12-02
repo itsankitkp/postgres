@@ -1324,8 +1324,34 @@ spool_tuples(WindowAggState *winstate, int64 pos)
 		if (winstate->status != WINDOWAGG_PASSTHROUGH_STRICT)
 		{
 			/* Still in partition, so save it into the tuplestore */
+			int c = 0;
+			int pos =  tuplestore_alloc_read_pointer(winstate->buffer, 0);
+			bool is_unique = true;
+			tuplestore_select_read_pointer(winstate->buffer, pos);
+			WindowStatePerFunc perfuncstate = &winstate->perfunc[0];
+			WindowStatePerAgg peraggstate = &winstate->peragg[0];	
+			while(c<winstate->spooled_rows){
+				if (!tuplestore_gettupleslot(winstate->buffer, true, true,
+											 winstate->temp_slot_1))
+					//elog(ERROR, "unexpected end of tuplestore");
+					break;
+
+				if(DatumGetBool(FunctionCall2Coll(&peraggstate->equalfnOne,
+											 perfuncstate->winCollation,
+											 winstate->temp_slot_1, outerslot))){
+												is_unique = false;
+												break;
+											 }
+				
+				
+
+				pos++;
+				
+			}
+			if (is_unique){
 			tuplestore_puttupleslot(winstate->buffer, outerslot);
 			winstate->spooled_rows++;
+			}
 		}
 	}
 
