@@ -811,6 +811,11 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 {
 	const char *err;
 	bool		errkind;
+	List	   *tlist = NIL;
+	List	   *torder = NIL;
+	List	   *tdistinct = NIL;
+	ListCell   *lc;
+	AttrNumber	attno = 1;
 
 	/*
 	 * A window function call can't contain another one (but aggs are OK). XXX
@@ -1042,6 +1047,41 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 			wfunc->winref = list_length(pstate->p_windowdefs);
 		}
 	}
+	if (wfunc->is_aggdistinct){
+		foreach(lc, wfunc->args)
+		{
+			Expr	   *arg = (Expr *) lfirst(lc);
+			TargetEntry *tle;
+
+			/* We don't bother to assign column names to the entries */
+			tle = makeTargetEntry(arg, attno++, NULL, false);
+			tlist = lappend(tlist, tle);
+		}
+		tdistinct = transformDistinctClause(pstate, &tlist, torder, true);
+
+		/*
+		* Remove this check if executor support for hashed distinct for
+		* aggregates is ever added.
+		*/
+		foreach(lc, tdistinct)
+		{
+			SortGroupClause *sortcl = (SortGroupClause *) lfirst(lc);
+
+			if (!OidIsValid(sortcl->sortop))
+			{
+				Node	   *expr = get_sortgroupclause_expr(sortcl, tlist);
+
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_FUNCTION),
+							errmsg("could not identify an ordering operator for type %s",
+								format_type_be(exprType(expr))),
+							errdetail("Aggregates with DISTINCT must be able to sort their inputs."),
+							parser_errposition(pstate, exprLocation(expr))));
+			}
+		}
+
+	}
+	wfunc->aggdistinct = tdistinct;
 
 	pstate->p_hasWindowFuncs = true;
 }

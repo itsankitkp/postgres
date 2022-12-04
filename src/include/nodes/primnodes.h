@@ -492,6 +492,9 @@ typedef struct WindowFunc
 	Oid			inputcollid;	/* OID of collation that function should use */
 	List	   *args;			/* arguments to the window function */
 	Expr	   *aggfilter;		/* FILTER expression, if any */
+	bool		is_aggdistinct;
+		
+	List	   *aggdistinct;	/* DISTINCT (list of SortGroupClause) */
 	Index		winref;			/* index of associated WindowClause */
 	bool		winstar;		/* true if argument list was really '*' */
 	bool		winagg;			/* is function a simple aggregate? */
