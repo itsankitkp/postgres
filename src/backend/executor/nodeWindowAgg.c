@@ -153,6 +153,14 @@ typedef struct WindowStatePerAggData
 	bool		transValueIsNull;
 
 	int64		transValueCount;	/* number of currently-aggregated rows */
+	/*
+	 * Comparators for input columns --- only set/used when aggregate has
+	 * DISTINCT flag. equalfnOne version is used for single-column
+	 * comparisons, equalfnMulti for the case of multiple columns.
+	 */
+	FmgrInfo	equalfnOne;
+	ExprState  *equalfnMulti;
+	Datum		lastdatum;
 
 	/* Data local to eval_windowaggregates() */
 	bool		restart;		/* need to restart this agg in this cycle? */
@@ -231,6 +239,9 @@ initialize_windowaggregate(WindowAggState *winstate,
 	peraggstate->transValueCount = 0;
 	peraggstate->resultValue = (Datum) 0;
 	peraggstate->resultValueIsNull = true;
+	peraggstate->lastdatum = (Datum) 0;
+
+	
 }
 
 /*
@@ -2583,6 +2594,7 @@ ExecInitWindowAgg(WindowAgg *node, EState *estate, int eflags)
 			peraggstate = &winstate->peragg[aggno];
 			initialize_peragg(winstate, wfunc, peraggstate);
 			peraggstate->wfuncno = wfuncno;
+
 		}
 		else
 		{
@@ -2993,6 +3005,41 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 								  ALLOCSET_DEFAULT_SIZES);
 	else
 		peraggstate->aggcontext = winstate->aggcontext;
+
+	if (wfunc->aggdistinct)
+	{
+		Oid		   *ops;
+		int numDistinctCols = list_length(wfunc->aggdistinct);
+
+		ops = palloc(numDistinctCols * sizeof(Oid));
+
+		i = 0;
+		foreach(lc, wfunc->aggdistinct)
+			ops[i++] = ((SortGroupClause *) lfirst(lc))->eqop;
+
+		/* lookup / build the necessary comparators */
+		if (numDistinctCols == 1)
+			fmgr_info(get_opcode(ops[0]), &peraggstate->equalfnOne);
+		// else
+		// 	peraggstate->equalfnMulti =
+		// 		execTuplesMatchPrepare(pertrans->sortdesc,
+		// 							numDistinctCols,
+		// 							pertrans->sortColIdx,
+		// 							ops,
+		// 							pertrans->sortCollations,
+		// 							&aggstate->ss.ps);
+		
+
+		winstate->sortstates = tuplesort_begin_datum(inputTypes[0],
+									  (Oid) 97,
+									  wfunc->inputcollid,
+									  false,
+									  work_mem, NULL, TUPLESORT_NONE);
+		pfree(ops);
+		}
+
+		
+	
 
 	ReleaseSysCache(aggTuple);
 

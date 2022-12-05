@@ -2720,6 +2720,7 @@ expression_tree_mutator_impl(Node *node,
 				FLATCOPY(newnode, wfunc, WindowFunc);
 				MUTATE(newnode->args, wfunc->args, List *);
 				MUTATE(newnode->aggfilter, wfunc->aggfilter, Expr *);
+				MUTATE(newnode->aggdistinct, wfunc->aggdistinct, List *);
 				return (Node *) newnode;
 			}
 			break;

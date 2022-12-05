@@ -2464,6 +2464,7 @@ typedef struct WindowAggState
 	ExprState  *partEqfunction; /* equality funcs for partition columns */
 	ExprState  *ordEqfunction;	/* equality funcs for ordering columns */
 	Tuplestorestate *buffer;	/* stores rows of current partition */
+	Tuplesortstate *sortstates;	/* sort objects, if DISTINCT or ORDER BY */
 	int			current_ptr;	/* read pointer # for current row */
 	int			framehead_ptr;	/* read pointer # for frame head, if used */
 	int			frametail_ptr;	/* read pointer # for frame tail, if used */

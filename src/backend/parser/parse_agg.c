@@ -814,8 +814,7 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 	List	   *tlist = NIL;
 	List	   *torder = NIL;
 	List	   *tdistinct = NIL;
-	ListCell   *lc;
-	AttrNumber	attno = 1;
+
 
 	/*
 	 * A window function call can't contain another one (but aggs are OK). XXX
@@ -1048,6 +1047,8 @@ transformWindowFuncCall(ParseState *pstate, WindowFunc *wfunc,
 		}
 	}
 	if (wfunc->is_aggdistinct){
+		ListCell   *lc;
+		AttrNumber	attno = 1;
 		foreach(lc, wfunc->args)
 		{
 			Expr	   *arg = (Expr *) lfirst(lc);

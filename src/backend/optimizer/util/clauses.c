@@ -2401,6 +2401,7 @@ eval_const_expressions_mutator(Node *node,
 				WindowFunc *expr = (WindowFunc *) node;
 				Oid			funcid = expr->winfnoid;
 				List	   *args;
+				List	   *aggdistinct;
 				Expr	   *aggfilter;
 				HeapTuple	func_tuple;
 				WindowFunc *newexpr;
@@ -2432,6 +2433,12 @@ eval_const_expressions_mutator(Node *node,
 					eval_const_expressions_mutator((Node *) expr->aggfilter,
 												   context);
 
+				aggdistinct = (List *)
+					expression_tree_mutator((Node *) expr->aggdistinct,
+											eval_const_expressions_mutator,
+											(void *) context);
+				
+
 				/* And build the replacement WindowFunc node */
 				newexpr = makeNode(WindowFunc);
 				newexpr->winfnoid = expr->winfnoid;
@@ -2443,6 +2450,9 @@ eval_const_expressions_mutator(Node *node,
 				newexpr->winref = expr->winref;
 				newexpr->winstar = expr->winstar;
 				newexpr->winagg = expr->winagg;
+				newexpr->is_aggdistinct = expr->is_aggdistinct;
+				newexpr->aggdistinct = aggdistinct;
+				
 				newexpr->location = expr->location;
 
 				return (Node *) newexpr;
