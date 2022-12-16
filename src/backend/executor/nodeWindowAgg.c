@@ -157,6 +157,7 @@ typedef struct WindowStatePerAggData
 
 	Datum		lastdatum;		/* used for single-column DISTINCT */
 	FmgrInfo	equalfnOne; /* single-column comparisons*/
+	Tuplesortstate *sortstates;
 
 	/* Data local to eval_windowaggregates() */
 	bool		restart;		/* need to restart this agg in this cycle? */
@@ -237,6 +238,20 @@ initialize_windowaggregate(WindowAggState *winstate,
 	peraggstate->lastdatum = (Datum) 0;
 	peraggstate->resultValueIsNull = true;
 	fmgr_info(get_opcode(96), &peraggstate->equalfnOne);
+	int i = 0;
+	ListCell *lc;
+	Oid			inputTypes[FUNC_MAX_ARGS];
+	WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
+	foreach(lc, perfuncstate->wfunc->args)
+	{
+		inputTypes[i++] = exprType((Node *) lfirst(lc));
+	}
+	peraggstate->sortstates =
+				tuplesort_begin_datum(perfuncstate->wfunc->wintype,
+									  (Oid) 97,
+									  perfuncstate->wfunc->inputcollid,
+									  true,
+									  work_mem, NULL, TUPLESORT_NONE);
 }
 
 /*
@@ -950,29 +965,97 @@ eval_windowaggregates(WindowAggState *winstate)
 		 * current row is not in frame but there might be more in the frame.
 		 */
 		ret = row_is_in_frame(winstate, winstate->aggregatedupto, agg_row_slot);
-		if (ret < 0)
+		if (ret < 0){
+		
+		tuplesort_performsort(peraggstate->sortstates);
+		Datum	   *newVal;
+		bool	   *isNull;
+		Datum		newAbbrevVal = (Datum) 0;
+		Datum		oldAbbrevVal = (Datum) 0;
+		MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
+		MemoryContext oldContext;
+		Datum		oldVal = (Datum) 0;
+		bool		oldIsNull = true;
+		bool		haveOldVal = false;
+		WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
+		while (tuplesort_getdatum(peraggstate->sortstates,
+							  true, false, newVal, isNull, &newAbbrevVal))
+		{
+			MemoryContextReset(workcontext);
+			oldContext = MemoryContextSwitchTo(workcontext);
+			if (oldAbbrevVal == newAbbrevVal &&
+				DatumGetBool(FunctionCall2Coll(&peraggstate->equalfnOne,
+												perfuncstate->winCollation,
+												oldVal, *newVal)))
+			{
+				MemoryContextSwitchTo(oldContext);
+				continue;
+			} 
+			else
+			{
+				/* Accumulate row into the aggregates */
+				for (i = 0; i < numaggs; i++)
+				{
+					peraggstate = &winstate->peragg[i];
+
+					/* Non-restarted aggs skip until aggregatedupto_nonrestarted */
+					if (!peraggstate->restart &&
+						winstate->aggregatedupto < aggregatedupto_nonrestarted)
+						continue;
+
+					wfuncno = peraggstate->wfuncno;
+					advance_windowaggregate(winstate,
+											&winstate->perfunc[wfuncno],
+											peraggstate);
+				}
+				MemoryContextSwitchTo(oldContext);
+				oldVal = *newVal;
+				// oldVal = datumCopy(*newVal, pertrans->inputtypeByVal,
+				// 					   pertrans->inputtypeLen);
+
+
+			}
+
+
+
+		}
+
+
+
 			break;
+		}
 		if (ret == 0)
 			goto next_tuple;
 
 		/* Set tuple context for evaluation of aggregate arguments */
 		winstate->tmpcontext->ecxt_outertuple = agg_row_slot;
 
-		/* Accumulate row into the aggregates */
-		for (i = 0; i < numaggs; i++)
-		{
-			peraggstate = &winstate->peragg[i];
+		WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
 
-			/* Non-restarted aggs skip until aggregatedupto_nonrestarted */
-			if (!peraggstate->restart &&
-				winstate->aggregatedupto < aggregatedupto_nonrestarted)
-				continue;
+		if (perfuncstate->wfunc->aggdistinct){
+			ListCell *arg;
+			WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
+			Datum tuple;
+			TupleTableSlot *slot;
+			MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
+			MemoryContext oldContext;
+			oldContext = MemoryContextSwitchTo(workcontext);
+			foreach(arg, wfuncstate->args)
+			{
+				ExprState  *argstate = (ExprState *) lfirst(arg);
 
-			wfuncno = peraggstate->wfuncno;
-			advance_windowaggregate(winstate,
-									&winstate->perfunc[wfuncno],
-									peraggstate);
+				tuple = ExecEvalExpr(argstate, workcontext, false);
+				ExecStoreMinimalTuple(tuple, slot, true);
+				if (!TupIsNull(slot))
+					tuplesort_puttupleslot(peraggstate->sortstates, slot);
+			}
+			MemoryContextSwitchTo(oldContext);
+
+
 		}
+
+
+
 
 next_tuple:
 		/* Reset per-input-tuple context after each tuple */
