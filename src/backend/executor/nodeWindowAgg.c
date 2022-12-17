@@ -1029,25 +1029,42 @@ eval_windowaggregates(WindowAggState *winstate)
 
 		/* Set tuple context for evaluation of aggregate arguments */
 		winstate->tmpcontext->ecxt_outertuple = agg_row_slot;
+		
 
 		WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
 
 		if (perfuncstate->wfunc->aggdistinct){
+			ExprContext *econtext = winstate->tmpcontext;
 			ListCell *arg;
 			WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
 			Datum tuple;
 			TupleTableSlot *slot;
+			TupleDesc	tupdesc;
 			MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
+			bool		isnull;
 			MemoryContext oldContext;
-			oldContext = MemoryContextSwitchTo(workcontext);
+			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+			tupdesc = CreateTemplateTupleDesc(1);
+			TupleDescInitEntry(tupdesc, (AttrNumber) 1, "random",
+					   INT4OID, -1, 0);
+			slot = MakeSingleTupleTableSlot(tupdesc,
+									&TTSOpsHeapTuple);
 			foreach(arg, wfuncstate->args)
 			{
+				
 				ExprState  *argstate = (ExprState *) lfirst(arg);
 
-				tuple = ExecEvalExpr(argstate, workcontext, false);
-				ExecStoreMinimalTuple(tuple, slot, true);
+		
+
+				tuple = ExecEvalExpr(argstate, econtext, &isnull);
+				slot->tts_values[0]=tuple;
+				slot->tts_isnull[0] = false;
+				ExecStoreVirtualTuple(slot);
+				
 				if (!TupIsNull(slot))
 					tuplesort_puttupleslot(peraggstate->sortstates, slot);
+					ExecClearTuple(slot);
+				
 			}
 			MemoryContextSwitchTo(oldContext);
 
