@@ -247,7 +247,7 @@ initialize_windowaggregate(WindowAggState *winstate,
 		inputTypes[i++] = exprType((Node *) lfirst(lc));
 	}
 	peraggstate->sortstates =
-				tuplesort_begin_datum(perfuncstate->wfunc->wintype,
+				tuplesort_begin_datum(inputTypes[0],
 									  (Oid) 97,
 									  perfuncstate->wfunc->inputcollid,
 									  true,
@@ -1038,32 +1038,17 @@ eval_windowaggregates(WindowAggState *winstate)
 			ListCell *arg;
 			WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
 			Datum tuple;
-			TupleTableSlot *slot;
-			TupleDesc	tupdesc;
 			MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
 			bool		isnull;
 			MemoryContext oldContext;
 			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
-			tupdesc = CreateTemplateTupleDesc(1);
-			TupleDescInitEntry(tupdesc, (AttrNumber) 1, "random",
-					   INT4OID, -1, 0);
-			slot = MakeSingleTupleTableSlot(tupdesc,
-									&TTSOpsHeapTuple);
+
 			foreach(arg, wfuncstate->args)
 			{
 				
 				ExprState  *argstate = (ExprState *) lfirst(arg);
-
-		
-
 				tuple = ExecEvalExpr(argstate, econtext, &isnull);
-				slot->tts_values[0]=tuple;
-				slot->tts_isnull[0] = false;
-				ExecStoreVirtualTuple(slot);
-				
-				if (!TupIsNull(slot))
-					tuplesort_puttupleslot(peraggstate->sortstates, slot);
-					ExecClearTuple(slot);
+				tuplesort_putdatum(peraggstate->sortstates, tuple, false);
 				
 			}
 			MemoryContextSwitchTo(oldContext);
