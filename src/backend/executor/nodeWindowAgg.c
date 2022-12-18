@@ -157,6 +157,7 @@ typedef struct WindowStatePerAggData
 	Datum		lastdatum;		/* used for single-column DISTINCT */
 	FmgrInfo	equalfnOne; /* single-column comparisons*/
 	Tuplesortstate *sortstates;
+	bool sort_in;
 
 	/* Data local to eval_windowaggregates() */
 	bool		restart;		/* need to restart this agg in this cycle? */
@@ -955,8 +956,81 @@ eval_windowaggregates(WindowAggState *winstate)
 		if (TupIsNull(agg_row_slot))
 		{
 			if (!window_gettupleslot(agg_winobj, winstate->aggregatedupto,
-									 agg_row_slot))
-				break;			/* must be end of partition */
+									 agg_row_slot)){
+		if (peraggstate->sort_in){								
+		tuplesort_performsort(peraggstate->sortstates);
+		Datum	   newVal;
+		bool	   isNull;
+		Datum		newAbbrevVal = (Datum) 0;
+		Datum		oldAbbrevVal = (Datum) 0;
+		MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
+		MemoryContext oldContext;
+		Datum		oldVal = (Datum) 0;
+		bool		oldIsNull = true;
+		bool		haveOldVal = false;
+		WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
+		while (tuplesort_getdatum(peraggstate->sortstates,
+							  true, true, &newVal, &isNull, &newAbbrevVal))
+		{
+			MemoryContextReset(workcontext);
+			oldContext = MemoryContextSwitchTo(workcontext);
+			if (oldAbbrevVal == newAbbrevVal &&
+				DatumGetBool(FunctionCall2Coll(&peraggstate->equalfnOne,
+												perfuncstate->winCollation,
+												oldVal, &newVal)))
+			{
+				MemoryContextSwitchTo(oldContext);
+				continue;
+			} 
+			else
+			{
+				/* Accumulate row into the aggregates */
+				for (i = 0; i < numaggs; i++)
+				{
+					peraggstate = &winstate->peragg[i];
+
+					/* Non-restarted aggs skip until aggregatedupto_nonrestarted */
+					if (!peraggstate->restart &&
+						winstate->aggregatedupto < aggregatedupto_nonrestarted)
+						continue;
+
+					wfuncno = peraggstate->wfuncno;
+					advance_windowaggregate(winstate,
+											&winstate->perfunc[wfuncno],
+											peraggstate);
+				}
+				MemoryContextSwitchTo(oldContext);
+				oldVal = newVal;
+				// oldVal = datumCopy(*newVal, pertrans->inputtypeByVal,
+				// 					   pertrans->inputtypeLen);
+
+
+			}
+
+		}
+		tuplesort_end(peraggstate->sortstates);
+		peraggstate->sort_in = false;
+
+		int i = 0;
+		ListCell *lc;
+		Oid			inputTypes[FUNC_MAX_ARGS];
+		foreach(lc, perfuncstate->wfunc->args)
+		{
+			inputTypes[i++] = exprType((Node *) lfirst(lc));
+		}
+		peraggstate->sortstates =
+				tuplesort_begin_datum(inputTypes[0],
+									  (Oid) 97,
+									  perfuncstate->wfunc->inputcollid,
+									  true,
+									  work_mem, NULL, TUPLESORT_NONE);
+
+		}
+
+			break;			/* must be end of partition */
+
+		}
+				
 		}
 
 		/*
@@ -1015,10 +1089,22 @@ eval_windowaggregates(WindowAggState *winstate)
 
 			}
 
-
-
 		}
-
+		tuplesort_end(peraggstate->sortstates);
+		peraggstate->sort_in = false;
+		int i = 0;
+		ListCell *lc;
+		Oid			inputTypes[FUNC_MAX_ARGS];
+		foreach(lc, perfuncstate->wfunc->args)
+		{
+			inputTypes[i++] = exprType((Node *) lfirst(lc));
+		}
+		peraggstate->sortstates =
+				tuplesort_begin_datum(inputTypes[0],
+									  (Oid) 97,
+									  perfuncstate->wfunc->inputcollid,
+									  true,
+									  work_mem, NULL, TUPLESORT_NONE);
 
 
 			break;
@@ -1051,6 +1137,7 @@ eval_windowaggregates(WindowAggState *winstate)
 				
 			}
 			MemoryContextSwitchTo(oldContext);
+			peraggstate->sort_in = true;
 
 
 		}
