@@ -1018,8 +1018,7 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 	 *
 	 * If the FDW does not support batching, we set the batch size to 1.
 	 */
-	if (mtstate->operation == CMD_INSERT &&
-		partRelInfo->ri_FdwRoutine != NULL &&
+	if (partRelInfo->ri_FdwRoutine != NULL &&
 		partRelInfo->ri_FdwRoutine->GetForeignModifyBatchSize &&
 		partRelInfo->ri_FdwRoutine->ExecForeignBatchInsert)
 		partRelInfo->ri_BatchSize =
@@ -1028,13 +1027,6 @@ ExecInitRoutingInfo(ModifyTableState *mtstate,
 		partRelInfo->ri_BatchSize = 1;
 
 	Assert(partRelInfo->ri_BatchSize >= 1);
-
-	/*
-	 * If doing batch insert, setup back-link so we can easily find the
-	 * mtstate again.
-	 */
-	if (partRelInfo->ri_BatchSize > 1)
-		partRelInfo->ri_ModifyTableState = mtstate;
 
 	partRelInfo->ri_CopyMultiInsertBuffer = NULL;
 
