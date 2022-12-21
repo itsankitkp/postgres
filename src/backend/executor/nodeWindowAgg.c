@@ -157,7 +157,7 @@ typedef struct WindowStatePerAggData
 
 	Datum		lastdatum;		/* used for single-column DISTINCT */
 	FmgrInfo	equalfnOne; /* single-column comparisons*/
-	Tuplesortstate *sortstates;
+	
 	bool sort_in;
 
 	/* Data local to eval_windowaggregates() */
@@ -250,7 +250,7 @@ initialize_windowaggregate(WindowAggState *winstate,
 	{
 		inputTypes[i++] = exprType((Node *) lfirst(lc));
 	}
-	peraggstate->sortstates =
+	winstate->sortstates =
 				tuplesort_begin_datum(inputTypes[0],
 									  (Oid) 97,
 									  perfuncstate->wfunc->inputcollid,
@@ -902,6 +902,20 @@ eval_windowaggregates(WindowAggState *winstate)
 			peraggstate->resultValueIsNull = true;
 		}
 	}
+	i = 0;
+	ListCell *lc;
+	Oid			inputTypes[FUNC_MAX_ARGS];
+	WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
+	foreach(lc, perfuncstate->wfunc->args)
+	{
+		inputTypes[i++] = exprType((Node *) lfirst(lc));
+	}
+	winstate->sortstates =
+				tuplesort_begin_datum(inputTypes[0],
+									  (Oid) 97,
+									  perfuncstate->wfunc->inputcollid,
+									  true,
+									  work_mem, NULL, TUPLESORT_NONE);
 
 	/*
 	 * Non-restarted aggregates now contain the rows between aggregatedbase
@@ -1000,7 +1014,7 @@ eval_windowaggregates(WindowAggState *winstate)
 
 				if (perfuncstate->wfunc->aggdistinct)
 				{
-					tuplesort_putdatum(peraggstate->sortstates, tuple, isnull);
+					tuplesort_putdatum(winstate->sortstates, tuple, isnull);
 					peraggstate->sort_in = true;
 				}
 				else
@@ -1072,7 +1086,7 @@ process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc pe
 								 WindowStatePerAgg peraggstate)
 {
 	if (peraggstate->sort_in){								
-		tuplesort_performsort(peraggstate->sortstates);
+		tuplesort_performsort(winstate->sortstates);
 		Datum	   newVal;
 		bool	   isNull;
 		MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
@@ -1081,7 +1095,7 @@ process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc pe
 		bool		oldIsNull = true;
 		bool		haveOldVal = false;
 
-		while (tuplesort_getdatum(peraggstate->sortstates,
+		while (tuplesort_getdatum(winstate->sortstates,
 							  true, false, &newVal, &isNull, NULL))
 		{
 			MemoryContextReset(workcontext);
@@ -1119,7 +1133,7 @@ process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc pe
 			}
 
 		}
-		tuplesort_end(peraggstate->sortstates);
+		tuplesort_end(winstate->sortstates);
 		peraggstate->sort_in = false;
 
 		int i = 0;
@@ -1129,7 +1143,7 @@ process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc pe
 		{
 			inputTypes[i++] = exprType((Node *) lfirst(lc));
 		}
-		peraggstate->sortstates =
+		winstate->sortstates =
 				tuplesort_begin_datum(inputTypes[0],
 									  (Oid) 97,
 									  perfuncstate->wfunc->inputcollid,
