@@ -157,7 +157,7 @@ typedef struct WindowStatePerAggData
 
 	Datum		lastdatum;		/* used for single-column DISTINCT */
 	FmgrInfo	equalfnOne; /* single-column comparisons*/
-	
+
 	bool sort_in;
 
 	/* Data local to eval_windowaggregates() */
@@ -217,6 +217,7 @@ initialize_windowaggregate(WindowAggState *winstate,
 						   WindowStatePerAgg peraggstate)
 {
 	MemoryContext oldContext;
+	int numDistinctCols;
 
 	/*
 	 * If we're using a private aggcontext, we may reset it here.  But if the
@@ -241,21 +242,6 @@ initialize_windowaggregate(WindowAggState *winstate,
 	peraggstate->resultValue = (Datum) 0;
 	peraggstate->lastdatum = (Datum) 0;
 	peraggstate->resultValueIsNull = true;
-	fmgr_info(get_opcode(96), &peraggstate->equalfnOne);
-	int i = 0;
-	ListCell *lc;
-	Oid			inputTypes[FUNC_MAX_ARGS];
-	WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
-	foreach(lc, perfuncstate->wfunc->args)
-	{
-		inputTypes[i++] = exprType((Node *) lfirst(lc));
-	}
-	winstate->sortstates =
-				tuplesort_begin_datum(inputTypes[0],
-									  (Oid) 97,
-									  perfuncstate->wfunc->inputcollid,
-									  true,
-									  work_mem, NULL, TUPLESORT_NONE);
 }
 
 /*
@@ -1218,6 +1204,7 @@ begin_partition(WindowAggState *winstate)
 	int			frameOptions = winstate->frameOptions;
 	int			numfuncs = winstate->numfuncs;
 	int			i;
+	int numaggs = winstate->numaggs;
 
 	winstate->partition_spooled = false;
 	winstate->framehead_valid = false;
@@ -3096,6 +3083,9 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	get_typlenbyval(aggtranstype,
 					&peraggstate->transtypeLen,
 					&peraggstate->transtypeByVal);
+	get_typlenbyval(wfunc->wintype,
+					&peraggstate->inputtypeLen,
+					&peraggstate->inputtypeByVal);
 
 	/*
 	 * initval is potentially null, so don't try to access it as a struct
@@ -3163,6 +3153,35 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	else
 		peraggstate->aggcontext = winstate->aggcontext;
 
+	/* Handle distinct operation in agg */
+	if (wfunc->aggdistinct)
+	{
+		ListCell *lc;
+
+		int		numDistinctCols = list_length(wfunc->distinctargs);
+		Oid*	eq_ops = palloc(numDistinctCols * sizeof(Oid));
+		Oid*	sort_ops =  palloc(numDistinctCols * sizeof(Oid));
+		winstate->sortstates = (Tuplesortstate **) 
+								palloc0(sizeof(Tuplesortstate *) * 1);
+
+		/* Initialize tuplesort to handle distinct operation */
+
+		i=0;
+		foreach(lc, wfunc->distinctargs)
+		{
+			SortGroupClause *sortcl = (SortGroupClause *) lfirst(lc);
+			eq_ops[i] = ((SortGroupClause *) lfirst(lc))->eqop;
+			sort_ops[i] = ((SortGroupClause *) lfirst(lc))->sortop;
+			i++;
+		}
+		fmgr_info(get_opcode(eq_ops[0]), &peraggstate->equalfnOne);
+		winstate->sortstates = tuplesort_begin_datum(inputTypes[0],
+											sort_ops[0],
+											wfunc->inputcollid,
+											true,
+											work_mem, NULL, TUPLESORT_NONE);
+	}
+	
 	ReleaseSysCache(aggTuple);
 
 	return peraggstate;

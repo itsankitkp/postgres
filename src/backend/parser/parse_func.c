@@ -849,6 +849,16 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 					 parser_errposition(pstate, location)));
 
 		/*
+		 * Distinct is not implemented for aggregates with filter
+		 */
+
+		if (agg_distinct && agg_filter)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("DISTINCT is not implemented for aggregate functions with FILTER"),
+					 parser_errposition(pstate, location)));
+
+		/*
 		 * ordered aggs not allowed in windows yet
 		 */
 		if (agg_order != NIL)
