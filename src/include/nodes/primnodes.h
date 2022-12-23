@@ -496,6 +496,7 @@ typedef struct WindowFunc
 	bool		winstar;		/* true if argument list was really '*' */
 	bool		winagg;			/* is function a simple aggregate? */
 	bool		aggdistinct;    /* do we need distinct values for aggregation? */
+	List		*distinctargs;
 	int			location;		/* token location, or -1 if unknown */
 } WindowFunc;
 
