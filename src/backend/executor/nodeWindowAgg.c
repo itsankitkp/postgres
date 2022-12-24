@@ -216,7 +216,6 @@ initialize_windowaggregate(WindowAggState *winstate,
 						   WindowStatePerAgg peraggstate)
 {
 	MemoryContext oldContext;
-	int numDistinctCols;
 
 	/*
 	 * If we're using a private aggcontext, we may reset it here.  But if the
@@ -253,14 +252,11 @@ advance_windowaggregate(WindowAggState *winstate,
 						WindowStatePerAgg peraggstate, Datum value, bool isNull)
 {
 	LOCAL_FCINFO(fcinfo, FUNC_MAX_ARGS);
-	WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
 	int			numArguments = perfuncstate->numArguments;
 	Datum		newVal;
-	ListCell   *arg;
 	int			i;
 	MemoryContext oldContext;
 	ExprContext *econtext = winstate->tmpcontext;
-	ExprState  *filter = wfuncstate->aggfilter;
 
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
@@ -661,6 +657,16 @@ eval_windowaggregates(WindowAggState *winstate)
 	TupleTableSlot *agg_row_slot;
 	TupleTableSlot *temp_slot;
 
+	ExprState 	*filter;
+	bool		isnull;
+	WindowFuncExprState *wfuncstate;
+	ListCell 	*arg;
+	Datum 		tuple;
+	ExprContext *aggecontext;
+	ListCell 	*lc;
+	Oid			inputTypes[FUNC_MAX_ARGS];
+	WindowStatePerFunc perfuncstate;
+
 	numaggs = winstate->numaggs;
 	if (numaggs == 0)
 		return;					/* nothing to do */
@@ -888,9 +894,8 @@ eval_windowaggregates(WindowAggState *winstate)
 		}
 	}
 	i = 0;
-	ListCell *lc;
-	Oid			inputTypes[FUNC_MAX_ARGS];
-	WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
+
+	perfuncstate = &winstate->perfunc[wfuncno];
 	foreach(lc, perfuncstate->wfunc->args)
 	{
 		inputTypes[i++] = exprType((Node *) lfirst(lc));
@@ -966,19 +971,18 @@ eval_windowaggregates(WindowAggState *winstate)
 				continue;
 
 			wfuncno = peraggstate->wfuncno;
+			perfuncstate = &winstate->perfunc[wfuncno];
 
-			WindowStatePerFunc perfuncstate = &winstate->perfunc[wfuncno];
-			ExprContext *econtext = winstate->tmpcontext;
-			bool		isnull;
-			WindowFuncExprState *wfuncstate = perfuncstate->wfuncstate;
-			ExprState *filter = wfuncstate->aggfilter;
-			MemoryContext oldContext;
-			oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+			aggecontext = winstate->tmpcontext;
+
+			wfuncstate = perfuncstate->wfuncstate;
+			filter = wfuncstate->aggfilter;
+
+			oldContext = MemoryContextSwitchTo(aggecontext->ecxt_per_tuple_memory);
 			/* Skip anything FILTERed out for aggregates */
 			if (perfuncstate->plain_agg && wfuncstate->aggfilter)
 			{
-				bool		isnull;
-				Datum		res = ExecEvalExpr(filter, econtext, &isnull);
+				Datum		res = ExecEvalExpr(filter, aggecontext, &isnull);
 
 				if (isnull || !DatumGetBool(res))
 				{
@@ -986,16 +990,13 @@ eval_windowaggregates(WindowAggState *winstate)
 					continue;
 				}
 			}
-			ListCell *arg;
-		
-			Datum tuple;
-			MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
+
 
 			foreach(arg, wfuncstate->args)
 			{
 				
 				ExprState  *argstate = (ExprState *) lfirst(arg);
-				tuple = ExecEvalExpr(argstate, econtext, &isnull);
+				tuple = ExecEvalExpr(argstate, aggecontext, &isnull);
 
 				if (perfuncstate->wfunc->aggdistinct)
 				{
@@ -1070,15 +1071,20 @@ static void
 process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc perfuncstate,
 								 WindowStatePerAgg peraggstate)
 {
+	Oid			inputTypes[FUNC_MAX_ARGS];
+	Datum	   newVal;
+	bool	   isNull;
+	MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
+	MemoryContext oldContext;
+	Datum		oldVal = (Datum) 0;
+	bool		oldIsNull = true;
+	bool		haveOldVal = false;
+	int 		i;
+	ListCell 	*lc;
+
 	if (peraggstate->sort_in){								
 		tuplesort_performsort(winstate->sortstates);
-		Datum	   newVal;
-		bool	   isNull;
-		MemoryContext workcontext = winstate->ss.ps.ps_ExprContext->ecxt_per_tuple_memory;
-		MemoryContext oldContext;
-		Datum		oldVal = (Datum) 0;
-		bool		oldIsNull = true;
-		bool		haveOldVal = false;
+
 
 		while (tuplesort_getdatum(winstate->sortstates,
 							  true, false, &newVal, &isNull, NULL))
@@ -1086,7 +1092,7 @@ process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc pe
 			MemoryContextReset(workcontext);
 			oldContext = MemoryContextSwitchTo(workcontext);
 
-			if (DatumGetBool(FunctionCall2Coll(&peraggstate->equalfnOne,
+			if (haveOldVal && DatumGetBool(FunctionCall2Coll(&peraggstate->equalfnOne,
 												perfuncstate->winCollation,
 												oldVal, newVal)))
 			{
@@ -1121,9 +1127,7 @@ process_ordered_aggregate_single(WindowAggState *winstate, WindowStatePerFunc pe
 		tuplesort_end(winstate->sortstates);
 		peraggstate->sort_in = false;
 
-		int i = 0;
-		ListCell *lc;
-		Oid			inputTypes[FUNC_MAX_ARGS];
+		i = 0;
 		foreach(lc, perfuncstate->wfunc->args)
 		{
 			inputTypes[i++] = exprType((Node *) lfirst(lc));
@@ -1203,7 +1207,6 @@ begin_partition(WindowAggState *winstate)
 	int			frameOptions = winstate->frameOptions;
 	int			numfuncs = winstate->numfuncs;
 	int			i;
-	int numaggs = winstate->numaggs;
 
 	winstate->partition_spooled = false;
 	winstate->framehead_valid = false;
@@ -3147,12 +3150,10 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 	/* Handle distinct operation in agg */
 	if (wfunc->aggdistinct)
 	{
-		ListCell *lc;
-
 		int		numDistinctCols = list_length(wfunc->distinctargs);
 		Oid*	eq_ops = palloc(numDistinctCols * sizeof(Oid));
 		Oid*	sort_ops =  palloc(numDistinctCols * sizeof(Oid));
-		winstate->sortstates = (Tuplesortstate **) 
+		winstate->sortstates = (Tuplesortstate *)
 								palloc0(sizeof(Tuplesortstate *) * 1);
 
 		/* Initialize tuplesort to handle distinct operation */
@@ -3160,7 +3161,6 @@ initialize_peragg(WindowAggState *winstate, WindowFunc *wfunc,
 		i=0;
 		foreach(lc, wfunc->distinctargs)
 		{
-			SortGroupClause *sortcl = (SortGroupClause *) lfirst(lc);
 			eq_ops[i] = ((SortGroupClause *) lfirst(lc))->eqop;
 			sort_ops[i] = ((SortGroupClause *) lfirst(lc))->sortop;
 			i++;
