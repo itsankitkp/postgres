@@ -127,6 +127,7 @@ typedef struct
 	WindowClause *wc;
 	List	   *uniqueOrder;	/* A List of unique ordering/partitioning
 								 * clauses per Window */
+	List	   *orderby;
 } WindowClauseSortData;
 
 /* Local functions */
@@ -5631,6 +5632,24 @@ select_active_windows(PlannerInfo *root, WindowFuncLists *wflists)
 		actives[nActive].uniqueOrder =
 			list_concat_unique(list_copy(wc->partitionClause),
 							   wc->orderClause);
+
+		/*
+		 * Check if Orderby clause in window function is subset of
+		 * orderby clause in the expression
+		 */
+		if (list_length(root->parse->sortClause) > list_length(actives[nActive].uniqueOrder))
+		{
+			List* orderbys = list_difference(root->parse->sortClause, actives[nActive].uniqueOrder);
+			ListCell *l;
+			foreach(l, orderbys)
+			{
+				SortGroupClause *sortcl = (SortGroupClause *) lfirst(l);
+				actives[nActive].uniqueOrder = lappend(actives[nActive].uniqueOrder, sortcl);
+			}
+
+
+		}
+
 		nActive++;
 	}
 
@@ -5657,8 +5676,21 @@ select_active_windows(PlannerInfo *root, WindowFuncLists *wflists)
 	qsort(actives, nActive, sizeof(WindowClauseSortData), common_prefix_cmp);
 
 	/* build ordered list of the original WindowClause nodes */
+
 	for (int i = 0; i < nActive; i++)
+	{	
+		// if (actives[i].orderby != NULL)
+		// {
+		// 	actives[i].wc->orderClause = actives[i].orderby;
+
+		// }
+
+
 		result = lappend(result, actives[i].wc);
+
+	}
+		
+
 
 	pfree(actives);
 
