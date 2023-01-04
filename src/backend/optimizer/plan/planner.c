@@ -5592,6 +5592,11 @@ optimize_window_clauses(PlannerInfo *root, WindowFuncLists *wflists)
  * select_active_windows
  *		Create a list of the "active" window clauses (ie, those referenced
  *		by non-deleted WindowFuncs) in the order they are to be executed.
+ *		Window clauses are ordered by the highest tleSortGroupRef first,
+ *		resulting in the lowest order tleSortGroupRefs being the last WindowAgg to be
+ *		processed. This reduces requirement for sort in lower order WindowAgg
+ *		as it is quite likely that required column is already sorted and if not,
+ *		there is possibility of incremental sort.
  */
 static List *
 select_active_windows(PlannerInfo *root, WindowFuncLists *wflists)

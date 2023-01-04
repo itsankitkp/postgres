@@ -1673,3 +1673,54 @@ $$ LANGUAGE SQL STABLE;
 
 EXPLAIN (costs off) SELECT * FROM pg_temp.f(2);
 SELECT * FROM pg_temp.f(2);
+
+-- test optimal ordering for minimal sort operations
+
+CREATE temp TABLE abcd (a int, b int, c int, d int);
+INSERT INTO abcd
+  SELECT p,q,r,s FROM
+    generate_series(1,5) p,
+    generate_Series(1,5) q,
+    generate_Series(1,5) r,
+    generate_Series(1,5) s;
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY b),
+  count(*) OVER (ORDER BY a,b)
+    FROM abcd ORDER BY a,b,c;
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a, b),
+  count(*) OVER (ORDER BY a)
+    FROM abcd ORDER BY a,b,c;
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,b,c)
+    FROM abcd ORDER BY a,b;
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,c),
+  count(*) OVER (ORDER BY a,b)
+    FROM abcd ORDER BY a,d;
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,b),
+  count(*) OVER (ORDER BY a,c)
+    FROM abcd ORDER BY a,d;
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,b),
+  count(*) OVER (ORDER BY a,c)
+    FROM abcd ORDER BY a,b,c;
+
+EXPLAIN (COSTS OFF)  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,c),
+  count(*) OVER (ORDER BY a,b)
+    FROM abcd ORDER BY a,b,c;
+
+-- cleanup
+DROP TABLE abcd;

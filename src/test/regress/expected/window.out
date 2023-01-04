@@ -4733,3 +4733,143 @@ SELECT * FROM pg_temp.f(2);
  {5}
 (5 rows)
 
+-- test optimal ordering for minimal sort operations
+CREATE temp TABLE abcd (a int, b int, c int, d int);
+INSERT INTO abcd
+  SELECT p,q,r,s FROM
+    generate_series(1,5) p,
+    generate_Series(1,5) q,
+    generate_Series(1,5) r,
+    generate_Series(1,5) s;
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY b),
+  count(*) OVER (ORDER BY a,b)
+    FROM abcd ORDER BY a,b,c;
+                   QUERY PLAN                   
+------------------------------------------------
+ Incremental Sort
+   Sort Key: a, b, c
+   Presorted Key: a, b
+   ->  WindowAgg
+         ->  Sort
+               Sort Key: a, b
+               ->  WindowAgg
+                     ->  Sort
+                           Sort Key: b
+                           ->  Seq Scan on abcd
+(10 rows)
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a, b),
+  count(*) OVER (ORDER BY a)
+    FROM abcd ORDER BY a,b,c;
+                QUERY PLAN                
+------------------------------------------
+ Incremental Sort
+   Sort Key: a, b, c
+   Presorted Key: a, b
+   ->  WindowAgg
+         ->  WindowAgg
+               ->  Sort
+                     Sort Key: a, b
+                     ->  Seq Scan on abcd
+(8 rows)
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,b,c)
+    FROM abcd ORDER BY a,b;
+             QUERY PLAN             
+------------------------------------
+ WindowAgg
+   ->  WindowAgg
+         ->  Sort
+               Sort Key: a, b, c
+               ->  Seq Scan on abcd
+(5 rows)
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,c),
+  count(*) OVER (ORDER BY a,b)
+    FROM abcd ORDER BY a,d;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Incremental Sort
+   Sort Key: a, d
+   Presorted Key: a
+   ->  WindowAgg
+         ->  WindowAgg
+               ->  Incremental Sort
+                     Sort Key: a, c
+                     Presorted Key: a
+                     ->  WindowAgg
+                           ->  Sort
+                                 Sort Key: a, b
+                                 ->  Seq Scan on abcd
+(12 rows)
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,b),
+  count(*) OVER (ORDER BY a,c)
+    FROM abcd ORDER BY a,d;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Incremental Sort
+   Sort Key: a, d
+   Presorted Key: a
+   ->  WindowAgg
+         ->  WindowAgg
+               ->  Incremental Sort
+                     Sort Key: a, b
+                     Presorted Key: a
+                     ->  WindowAgg
+                           ->  Sort
+                                 Sort Key: a, c
+                                 ->  Seq Scan on abcd
+(12 rows)
+
+EXPLAIN (COSTS OFF)
+  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,b),
+  count(*) OVER (ORDER BY a,c)
+    FROM abcd ORDER BY a,b,c;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Incremental Sort
+   Sort Key: a, b, c
+   Presorted Key: a, b
+   ->  WindowAgg
+         ->  WindowAgg
+               ->  Incremental Sort
+                     Sort Key: a, b
+                     Presorted Key: a
+                     ->  WindowAgg
+                           ->  Sort
+                                 Sort Key: a, c
+                                 ->  Seq Scan on abcd
+(12 rows)
+
+EXPLAIN (COSTS OFF)  SELECT row_number() OVER (ORDER BY a),
+  count(*) OVER (ORDER BY a,c),
+  count(*) OVER (ORDER BY a,b)
+    FROM abcd ORDER BY a,b,c;
+                      QUERY PLAN                      
+------------------------------------------------------
+ Incremental Sort
+   Sort Key: a, b, c
+   Presorted Key: a, b
+   ->  WindowAgg
+         ->  WindowAgg
+               ->  Incremental Sort
+                     Sort Key: a, b
+                     Presorted Key: a
+                     ->  WindowAgg
+                           ->  Sort
+                                 Sort Key: a, c
+                                 ->  Seq Scan on abcd
+(12 rows)
+
+-- cleanup
+DROP TABLE abcd;
