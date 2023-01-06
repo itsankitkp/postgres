@@ -4461,6 +4461,56 @@ create_one_window_path(PlannerInfo *root,
 		if (!is_sorted)
 		{
 			/*
+			 * for final window function, add aditional sorting clause
+			 * root's order by, if they are compatible. This will
+			 * save additional sorting at the end
+			 */
+			if( foreach_current_index(l) == (list_length(activeWindows) - 1))
+			{
+			List	   *window_sortclauses;
+			ListCell	*wsc;
+			ListCell	*sc;
+			bool		should_prepend = true; /* wishful thinking */
+
+			/*
+			 * Same as in make_pathkeys_for_window
+			 * for sorting, partition clause is taken first
+			 */
+			window_sortclauses = list_concat_copy(wc->partitionClause, wc->orderClause);
+
+			/*
+			 * Sort clauses of root can be prepended if and only if
+			 * sort clause of window function is subset of root's sort clause
+			 * XXX is there better way to find this?
+			 */
+			forboth(wsc, window_sortclauses, sc, root->parse->sortClause)
+			{
+				SortGroupClause *window_sortclause = (SortGroupClause*) lfirst(wsc);
+				SortGroupClause *sortclause = (SortGroupClause*) lfirst(sc);
+				if (window_sortclause->tleSortGroupRef != sortclause->tleSortGroupRef)
+				{
+					should_prepend = false;
+					break;
+				}
+			}
+			/*
+			 * add root's sort clauses in the end
+			 */
+			window_sortclauses = list_concat_unique(window_sortclauses, root->parse->sortClause);
+
+			/*
+			 * Override window path key defined by make_pathkeys_for_window
+			 * XXX since we are overriding make_pathkeys_for_window, it is
+			 * a wasteful call in critical path. Should we call make_pathkeys_for_window
+			 * after this function?
+			 */
+			if (should_prepend)
+				window_pathkeys = make_pathkeys_for_sortclauses(root,
+													window_sortclauses,
+													root->processed_tlist);
+			}
+		
+			/*
 			 * No presorted keys or incremental sort disabled, just perform a
 			 * complete sort.
 			 */
@@ -4521,6 +4571,8 @@ create_one_window_path(PlannerInfo *root,
 		 */
 		if (!topwindow)
 			topqual = list_concat(topqual, wc->runCondition);
+		
+
 
 		path = (Path *)
 			create_windowagg_path(root, window_rel, path, window_target,
@@ -5881,6 +5933,7 @@ make_pathkeys_for_window(PlannerInfo *root, WindowClause *wc,
 
 	/* Okay, make the combined pathkeys */
 	window_sortclauses = list_concat_copy(wc->partitionClause, wc->orderClause);
+	//window_sortclauses = list_concat_unique(window_sortclauses, root->parse->sortClause);
 	window_pathkeys = make_pathkeys_for_sortclauses(root,
 													window_sortclauses,
 													tlist);
