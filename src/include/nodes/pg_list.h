@@ -379,13 +379,29 @@ lnext(const List *l, const ListCell *c)
 		 cell##__state.i++)
 
 /*
+ * foreach_reverse -
+ *	  a convenience macro for looping through a list in reverse
+ *
+ * This is equivalent to foreach, only it loops over the list starting with
+ * the last element and ends on the first element.
+ */
+#define foreach_reverse(cell, lst)	\
+	for (ForEachState cell##__state = {(lst), cell##__state.l->length - 1}; \
+		 (cell##__state.l != NIL && \
+		  cell##__state.i >= 0) ? \
+		 (cell = &cell##__state.l->elements[cell##__state.i], true) : \
+		 (cell = NULL, false); \
+		 cell##__state.i--)
+
+/*
  * foreach_delete_current -
  *	  delete the current list element from the List associated with a
- *	  surrounding foreach() loop, returning the new List pointer.
+ *	  surrounding foreach() or foreach_reverse() loop, returning the new List
+*	  pointer.
  *
  * This is equivalent to list_delete_cell(), but it also adjusts the foreach
- * loop's state so that no list elements will be missed.  Do not delete
- * elements from an active foreach loop's list in any other way!
+ * or foreach_reverse loop's state so that no list elements will be missed.
+ * Do not delete elements from an active foreach loop's list in any other way!
  */
 #define foreach_delete_current(lst, cell)	\
 	(cell##__state.i--, \
@@ -393,8 +409,9 @@ lnext(const List *l, const ListCell *c)
 
 /*
  * foreach_current_index -
- *	  get the zero-based list index of a surrounding foreach() loop's
- *	  current element; pass the name of the "ListCell *" iterator variable.
+ *	  get the zero-based index within the list of the current element in the
+ *	  surrounding foreach() or foreach_reverse() loop; pass the name of the
+ *	  "ListCell *" iterator variable.
  *
  * Beware of using this after foreach_delete_current(); the value will be
  * out of sync for the rest of the current loop iteration.  Anyway, since

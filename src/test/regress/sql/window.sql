@@ -1324,7 +1324,109 @@ SELECT DISTINCT
 FROM empsalary
 ORDER BY depname, empno;
 
+-- Do not perform sort pushdown if column is presorted
+CREATE INDEX depname_idx ON empsalary(depname);
+SET enable_seqscan=0;
+
+EXPLAIN (COSTS OFF)
+SELECT empno,
+        min(salary) OVER (PARTITION BY depname) depminsalary
+FROM empsalary
+ORDER BY depname, empno;
+
+-- Do perform sort pushdown if columns are only partially sorted
+EXPLAIN (COSTS OFF)
+SELECT empno,
+        min(salary) OVER (PARTITION BY depname, empno) depminsalary
+FROM empsalary
+ORDER BY depname, empno, enroll_date;
+
+DROP INDEX depname_idx;
+RESET enable_seqscan;
 RESET enable_hashagg;
+
+-- If window function's ORDER BY is subset of QUERY's ORDER BY, sort as per as
+-- QUERY's ORDER BY to save additional sorting in the end
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       depname,
+       min(salary) OVER (ORDER BY depname) depminsalary
+FROM empsalary
+ORDER BY depname, empno;
+
+-- Same as above, but PARTITION BY clause is included as well
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       depname,
+       min(salary) OVER (PARTITION BY depname ORDER BY empno) depminsalary
+FROM empsalary
+ORDER BY depname, empno, enroll_date;
+
+-- Negation of above, when sort optimization is not needed to be performed
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       depname,
+       min(salary) OVER (PARTITION BY depname ORDER BY empno) depminsalary
+FROM empsalary
+ORDER BY empno, enroll_date;
+
+-- ORDER BY's in multiple Window functions can be combined into one
+-- if they are subset of QUERY's ORDER BY
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       depname,
+       min(salary) OVER (PARTITION BY depname ORDER BY empno) depminsalary,
+       sum(salary) OVER (PARTITION BY depname) depsalary,
+       count(*) OVER (ORDER BY enroll_date DESC) c
+FROM empsalary
+ORDER BY depname, empno, enroll_date;
+
+-- order of window function shouldn't affect query's ORDER BY pushdown
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       depname,
+       count(*) OVER (ORDER BY enroll_date DESC) c,
+       sum(salary) OVER (PARTITION BY depname) depsalary,
+       min(salary) OVER (PARTITION BY depname ORDER BY empno) depminsalary
+FROM empsalary
+ORDER BY depname, empno, enroll_date;
+
+-- SORT OPTIMIZATION (as in cases above) is not needed to be performed
+-- in cases, as mentioned below.
+
+-- Case #1: When distinct clause is included
+EXPLAIN (COSTS OFF)
+SELECT DISTINCT empno,
+       depname,
+       min(salary) OVER (PARTITION BY depname) depminsalary,
+       sum(salary) OVER (PARTITION BY depname) depsalary,
+       count(*) OVER (ORDER BY enroll_date DESC) c
+FROM empsalary
+ORDER BY depname, empno;
+
+-- Case #2: When Limit clause is specified
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       depname,
+       min(salary) OVER (PARTITION BY empno) depminsalary,
+       sum(salary) OVER (PARTITION BY empno) depsalary
+FROM empsalary
+ORDER BY empno, depname LIMIT 1;
+
+-- Case #3: When ORDER BY contains any WindowFuncs
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       row_number() over (PARTITION BY empno) esalary
+FROM empsalary
+ORDER BY empno, esalary;
+
+-- Case #4: When WindowFunc ORDER BY is superset of QUERY's ORDER BY
+EXPLAIN (COSTS OFF)
+SELECT empno,
+       sum(salary) OVER (PARTITION BY depname) depsalary,
+       min(salary) OVER (PARTITION BY depname ORDER BY empno) depminsalary
+FROM empsalary
+ORDER BY depname;
 
 -- Test Sort node reordering
 EXPLAIN (COSTS OFF)
