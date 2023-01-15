@@ -1970,8 +1970,8 @@ has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel)
 }
 
 /*
- * Returns True if ateast one key from keys1 is
- * present on key2
+ * Returns True if key1 subset is key2 i.e.
+ * atleast one key from keys1 is present on key2
  */
 bool
 is_pathkey_subset(List	*keys1, List* keys2)

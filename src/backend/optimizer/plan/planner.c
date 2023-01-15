@@ -4481,7 +4481,7 @@ create_one_window_path(PlannerInfo *root,
 	 *		then we can't push down the sort as these obviously must be
 	 *		evaluated before they can be sorted.
 	 */
-	if (parse->sortClause != NIL && parse->distinctClause == NIL &&
+	if (parse->sortClause != NIL &&
 		parse->limitCount == NULL &&
 		linitial_node(WindowClause, activeWindows)->runCondition == NIL &&
 		!contain_window_function((Node *) get_sortgrouplist_exprs(parse->sortClause,
@@ -4933,12 +4933,17 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 			bool		is_sorted;
 			int			presorted_keys;
 
-			is_sorted = pathkeys_count_contained_in(needed_pathkeys,
-													input_path->pathkeys,
-													&presorted_keys);
 
+			/*
+			 * Consider any any sorting which can be reutilizied for distinct
+			 * even if ordering differs.
+			 */
 			if (IsA(lfirst(lc), IndexPath))
 			{
+				/*
+				 * Find if index pathkeys are subset of needed pathkeys
+				 * if so then prepend these keys so that sorting is not needed
+				 */
 				IndexPath *idx_path  = (IndexPath*) lfirst(lc);
 				if (is_pathkey_subset(needed_pathkeys, idx_path->indexpathkeys))
 				{
@@ -4949,10 +4954,22 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 													idx_path->indexpathkeys,
 													&presorted_keys);
 			}
-			else
+			else 
+			{
+				/*
+				 * If needed pathkeys are subset of query_pathkeys,
+				 * if so, lower nodes will have sorted some columns which
+				 * we can reuse. 
+				 */
+				if (is_pathkey_subset(needed_pathkeys, root->query_pathkeys))
+				{
+					needed_pathkeys = list_concat_unique(list_copy(root->query_pathkeys), needed_pathkeys);
+				}
 				is_sorted = pathkeys_count_contained_in(needed_pathkeys,
-													root->query_pathkeys,
+													input_path->pathkeys,
 													&presorted_keys);
+			}
+
 
 			if (is_sorted)
 				sorted_path = input_path;
