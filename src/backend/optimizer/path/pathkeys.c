@@ -1968,3 +1968,21 @@ has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel)
 		return true;			/* might be able to use them for ordering */
 	return false;				/* definitely useless */
 }
+
+/*
+ * Returns True if ateast one key from keys1 is
+ * present on key2
+ */
+bool
+is_pathkey_subset(List	*keys1, List* keys2)
+{
+	ListCell* l;
+	foreach(l, keys1)
+	{
+		PathKey    *pathkey1 = (PathKey *) lfirst(l);
+		if(pathkey_is_redundant(pathkey1, keys2)){
+			return true;
+		}
+	}
+	return false;
+}

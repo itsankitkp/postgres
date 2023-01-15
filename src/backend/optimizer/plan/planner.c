@@ -4849,6 +4849,23 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 													input_path->pathkeys,
 													&presorted_keys);
 
+			if (IsA(lfirst(lc), IndexPath))
+			{
+				IndexPath *idx_path  = (IndexPath*) lfirst(lc);
+				if (is_pathkey_subset(needed_pathkeys, idx_path->indexpathkeys))
+				{
+
+					needed_pathkeys = list_concat_unique(list_copy(idx_path->indexpathkeys), needed_pathkeys);
+				}
+				is_sorted = pathkeys_count_contained_in(needed_pathkeys,
+													idx_path->indexpathkeys,
+													&presorted_keys);
+			}
+			else
+				is_sorted = pathkeys_count_contained_in(needed_pathkeys,
+													root->query_pathkeys,
+													&presorted_keys);
+
 			if (is_sorted)
 				sorted_path = input_path;
 			else
@@ -6504,7 +6521,7 @@ plan_cluster_use_sort(Oid tableOid, Oid indexOid)
 
 	/* Estimate the cost of index scan */
 	indexScanPath = create_index_path(root, indexInfo,
-									  NIL, NIL, NIL, NIL,
+									  NIL, NIL, NIL, NIL, NIL,
 									  ForwardScanDirection, false,
 									  NULL, 1.0, false);
 

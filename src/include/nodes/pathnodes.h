@@ -1601,6 +1601,7 @@ typedef struct IndexPath
 	List	   *indexclauses;
 	List	   *indexorderbys;
 	List	   *indexorderbycols;
+	List	   *indexpathkeys;
 	ScanDirection indexscandir;
 	Cost		indextotalcost;
 	Selectivity indexselectivity;

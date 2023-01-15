@@ -1000,6 +1000,7 @@ create_index_path(PlannerInfo *root,
 				  List *indexorderbys,
 				  List *indexorderbycols,
 				  List *pathkeys,
+				  List *indexpathkeys,
 				  ScanDirection indexscandir,
 				  bool indexonly,
 				  Relids required_outer,
@@ -1023,7 +1024,9 @@ create_index_path(PlannerInfo *root,
 	pathnode->indexclauses = indexclauses;
 	pathnode->indexorderbys = indexorderbys;
 	pathnode->indexorderbycols = indexorderbycols;
+
 	pathnode->indexscandir = indexscandir;
+	pathnode->indexpathkeys = indexpathkeys;
 
 	cost_index(pathnode, root, loop_count, partial_path);
 
