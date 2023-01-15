@@ -4954,12 +4954,12 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 													idx_path->indexpathkeys,
 													&presorted_keys);
 			}
-			else 
+			else
 			{
 				/*
 				 * If needed pathkeys are subset of query_pathkeys,
 				 * if so, lower nodes will have sorted some columns which
-				 * we can reuse. 
+				 * we can reuse.
 				 */
 				if (is_pathkey_subset(needed_pathkeys, root->query_pathkeys))
 				{
