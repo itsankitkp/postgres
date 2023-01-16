@@ -1968,3 +1968,32 @@ has_useful_pathkeys(PlannerInfo *root, RelOptInfo *rel)
 		return true;			/* might be able to use them for ordering */
 	return false;				/* definitely useless */
 }
+
+/*
+ * extract_common_pathkeys
+ *		returns a List of pathkeys
+ *	which are in keys1 but not in keys2 and NIL if keys2 has a pathkey
+ * that does not exist as a pathkey in keys1 
+ */
+List *
+extract_common_pathkeys(List* keys1, List *keys2)
+{
+	List *new_pk = NIL;
+	ListCell	*l1;
+	ListCell	*l2;
+	foreach(l1, keys1)
+	{
+		PathKey    *pathkey1 = (PathKey *) lfirst(l1);
+		foreach(l2, keys2)
+		{
+			PathKey    *pathkey2 = (PathKey *) lfirst(l2);
+			if (pathkey1 == pathkey2)
+			{
+				new_pk = lappend(new_pk, pathkey2);
+				break;
+			}
+		}
+	}
+	return new_pk;
+
+}

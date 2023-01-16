@@ -4844,10 +4844,22 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 			Path	   *sorted_path;
 			bool		is_sorted;
 			int			presorted_keys;
+			List		*common_keys;
+
+
 
 			is_sorted = pathkeys_count_contained_in(needed_pathkeys,
 													input_path->pathkeys,
 													&presorted_keys);
+			common_keys = extract_common_pathkeys(needed_pathkeys, input_path->pathkeys);
+			
+			if (common_keys)
+			{
+				input_path->pathkeys = list_union(input_path->pathkeys, common_keys);
+				presorted_keys = list_length(common_keys);
+
+			}
+
 
 			if (is_sorted)
 				sorted_path = input_path;
