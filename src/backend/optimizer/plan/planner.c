@@ -4852,13 +4852,17 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 
 			/*
 			 * Check if there are common pathkeys (regardless of ordering)
+			 * in input path and needed_pathkeys
 			 */
 			common_keys = extract_common_pathkeys(input_path->pathkeys, needed_pathkeys);
 			
 			if (common_keys)
 			{
 				/*
-				 * Now that we have common keys, we can add these to path
+				 * Now that we have common keys, we can add these to needed_path
+				 * so that any ordering in current path can be re-used.
+				 * We are only reshuffling ordering of needed_pathkeys here
+				 * to match input path keys, nothing gets added or removed.
 				 */
 				needed_pathkeys = list_concat_unique(common_keys, needed_pathkeys);
 				is_sorted = pathkeys_count_contained_in(needed_pathkeys,
