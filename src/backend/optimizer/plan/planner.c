@@ -4846,20 +4846,25 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 			int			presorted_keys;
 			List		*common_keys;
 
-
-
 			is_sorted = pathkeys_count_contained_in(needed_pathkeys,
 													input_path->pathkeys,
 													&presorted_keys);
-			common_keys = extract_common_pathkeys(needed_pathkeys, input_path->pathkeys);
+
+			/*
+			 * Check if there are common pathkeys (regardless of ordering)
+			 */
+			common_keys = extract_common_pathkeys(input_path->pathkeys, needed_pathkeys);
 			
 			if (common_keys)
 			{
-				input_path->pathkeys = list_union(input_path->pathkeys, common_keys);
-				presorted_keys = list_length(common_keys);
-
+				/*
+				 * Now that we have common keys, we can add these to path
+				 */
+				needed_pathkeys = list_concat_unique(common_keys, needed_pathkeys);
+				is_sorted = pathkeys_count_contained_in(needed_pathkeys,
+													input_path->pathkeys,
+													&presorted_keys);
 			}
-
 
 			if (is_sorted)
 				sorted_path = input_path;

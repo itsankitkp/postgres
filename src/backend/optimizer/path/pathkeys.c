@@ -1989,7 +1989,7 @@ extract_common_pathkeys(List* keys1, List *keys2)
 			PathKey    *pathkey2 = (PathKey *) lfirst(l2);
 			if (pathkey1 == pathkey2)
 			{
-				new_pk = lappend(new_pk, pathkey2);
+				new_pk = lappend(new_pk, pathkey1);
 				break;
 			}
 		}
