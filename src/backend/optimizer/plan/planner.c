@@ -4936,10 +4936,13 @@ create_final_distinct_paths(PlannerInfo *root, RelOptInfo *input_rel,
 			Path	   *sorted_path;
 			bool		is_sorted;
 			int			presorted_keys;
+			List*		reordered_keys = NIL;
 
-			is_sorted = pathkeys_count_contained_in(needed_pathkeys,
+			is_sorted = pathkeys_count_contained_in_unordered(needed_pathkeys,
 													input_path->pathkeys,
+													&reordered_keys,
 													&presorted_keys);
+			needed_pathkeys = reordered_keys;
 
 			if (is_sorted)
 				sorted_path = input_path;
