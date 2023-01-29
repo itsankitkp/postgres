@@ -846,6 +846,16 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"enable_sort_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's ability to push ORDER BY below WindowClauses."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&enable_sort_pushdown,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"enable_incremental_sort", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of incremental sort steps."),
 			NULL,
