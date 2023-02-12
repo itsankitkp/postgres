@@ -2754,12 +2754,9 @@ tuplesort_sort_memtuples(Tuplesortstate *state)
 				int i=0;
 				for (i = 0; i < state->memtupcount; i++)
 				{	
-					temptuples[i] = (void* ) palloc0(sizeof(state->memtuples[1].tuple));
+					//temptuples[i] = (void* ) palloc0(sizeof(state->memtuples[1].tuple));
 					temptuples[i] = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
-				}
-				for (i = 0; i < state->memtupcount; i++)
-				{	
-
+					//pfree(state->memtuples[i].tuple);
 					state->memtuples[i].tuple = temptuples[i];
 				}
 
