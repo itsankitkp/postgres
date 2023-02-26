@@ -2754,14 +2754,18 @@ tuplesort_sort_memtuples(Tuplesortstate *state)
 									state);
 					state->base.onlyKey = oldonlyKey;
 					/* realloc tuples */
-					void **temptuples = (void **) palloc(state->memtupsize * sizeof(state->memtuples[1].tuple));
+					//void **temptuples = (void **) palloc(state->memtupsize * sizeof(state->memtuples[1].tuple));
+					SortTuple  *tempmemtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 					int i=0;
 					for (i = 0; i < state->memtupcount; i++)
 					{	
-						temptuples[i] = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
-						pfree(state->memtuples[i].tuple);
-						state->memtuples[i].tuple = temptuples[i];
+						tempmemtuples[i].datum1 = state->memtuples[i].datum1;
+						tempmemtuples[i].tuple = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
+						tempmemtuples[i].isnull1 = state->memtuples[i].isnull1;
+						tempmemtuples[i].srctape = state->memtuples[i].srctape;
 					}
+					pfree(state->memtuples);
+					state->memtuples = tempmemtuples;
 
 					qsort_tuple_int32(state->memtuples,
 									state->memtupcount,
