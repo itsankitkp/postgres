@@ -406,6 +406,7 @@ struct Sharedsort
 #define SERIAL(state)		((state)->shared == NULL)
 #define WORKER(state)		((state)->shared && (state)->worker != -1)
 #define LEADER(state)		((state)->shared && (state)->worker == -1)
+#define CACHESIZE 2*1024*1024L
 
 /*
  * NOTES about on-tape representation of tuples:
@@ -2749,17 +2750,41 @@ tuplesort_sort_memtuples(Tuplesortstate *state)
 				{
 					SortSupport oldonlyKey = state->base.onlyKey;
 					state->base.onlyKey = state->base.sortKeys;
-					qsort_tuple_int32(state->memtuples,
-									state->memtupcount,
+					int BATCHSIZE = ceil(CACHESIZE/sizeof(state->memtuples[0].tuple));
+					if (state->memtupcount<BATCHSIZE)
+					{
+						BATCHSIZE = state->memtupcount;
+					}
+					int i=0;
+					while(i<state->memtupcount)
+					{
+						if ((i+BATCHSIZE) > state->memtupcount)
+						{
+							BATCHSIZE = (state->memtupcount - i);
+						}
+						SortTuple  *memtuples = &state->memtuples[i];
+						qsort_tuple_int32(memtuples,
+									BATCHSIZE,
 									state);
+
+
+							i+=BATCHSIZE;
+						
+					}
+
 					state->base.onlyKey = oldonlyKey;
 					/* realloc tuples */
 					//void **temptuples = (void **) palloc(state->memtupsize * sizeof(state->memtuples[1].tuple));
 					SortTuple  *tempmemtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
-					int i=0;
+
 					for (i = 0; i < state->memtupcount; i++)
 					{	
 						tempmemtuples[i].datum1 = state->memtuples[i].datum1;
+						if (state->memtuples[i].tuple == NULL)
+						{
+							break;
+						}
+						
 						tempmemtuples[i].tuple = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
 						tempmemtuples[i].isnull1 = state->memtuples[i].isnull1;
 						tempmemtuples[i].srctape = state->memtuples[i].srctape;
