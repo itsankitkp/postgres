@@ -127,6 +127,8 @@
 bool		trace_sort = false;
 #endif
 
+bool		enable_sort_optimization = true;
+
 #ifdef DEBUG_BOUNDED_SORT
 bool		optimize_bounded_sort = true;
 #endif
@@ -2742,28 +2744,38 @@ tuplesort_sort_memtuples(Tuplesortstate *state)
 			}
 #endif
 			else if (state->base.sortKeys[0].comparator == ssup_datum_int32_cmp)
-			{
-				SortSupport oldonlyKey = state->base.onlyKey;
-				state->base.onlyKey = state->base.sortKeys;
-				qsort_tuple_int32(state->memtuples,
-								  state->memtupcount,
-								  state);
-				state->base.onlyKey = oldonlyKey;
-				/* realloc tuples */
-				void **temptuples = (void **) palloc(state->memtupsize * sizeof(state->memtuples[1].tuple));
-				int i=0;
-				for (i = 0; i < state->memtupcount; i++)
-				{	
-					//temptuples[i] = (void* ) palloc0(sizeof(state->memtuples[1].tuple));
-					temptuples[i] = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
-					//pfree(state->memtuples[i].tuple);
-					state->memtuples[i].tuple = temptuples[i];
-				}
+			{	
+				if (enable_sort_optimization)
+				{
+					SortSupport oldonlyKey = state->base.onlyKey;
+					state->base.onlyKey = state->base.sortKeys;
+					qsort_tuple_int32(state->memtuples,
+									state->memtupcount,
+									state);
+					state->base.onlyKey = oldonlyKey;
+					/* realloc tuples */
+					void **temptuples = (void **) palloc(state->memtupsize * sizeof(state->memtuples[1].tuple));
+					int i=0;
+					for (i = 0; i < state->memtupcount; i++)
+					{	
+						temptuples[i] = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
+						pfree(state->memtuples[i].tuple);
+						state->memtuples[i].tuple = temptuples[i];
+					}
 
-				qsort_tuple_int32(state->memtuples,
+					qsort_tuple_int32(state->memtuples,
+									state->memtupcount,
+									state);
+					return;
+				}
+				else
+				{
+					qsort_tuple_int32(state->memtuples,
 								  state->memtupcount,
 								  state);
 				return;
+
+				}
 			}
 		}
 

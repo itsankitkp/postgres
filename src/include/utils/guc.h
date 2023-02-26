@@ -281,6 +281,7 @@ extern PGDLLIMPORT int tcp_keepalives_idle;
 extern PGDLLIMPORT int tcp_keepalives_interval;
 extern PGDLLIMPORT int tcp_keepalives_count;
 extern PGDLLIMPORT int tcp_user_timeout;
+extern PGDLLIMPORT bool enable_sort_optimization;
 
 #ifdef TRACE_SORT
 extern PGDLLIMPORT bool trace_sort;

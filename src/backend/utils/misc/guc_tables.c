@@ -847,6 +847,16 @@ struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"enable_sort_optimization", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the sort optimizations."),
+			NULL,
+			GUC_EXPLAIN
+		},
+		&enable_sort_optimization,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"enable_incremental_sort", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of incremental sort steps."),
 			NULL,
