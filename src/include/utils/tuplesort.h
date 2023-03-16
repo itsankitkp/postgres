@@ -139,6 +139,7 @@ typedef struct
 	Datum		datum1;			/* value of first key column */
 	bool		isnull1;		/* is first key column NULL? */
 	int			srctape;		/* source tape number */
+	bool		isActive;
 } SortTuple;
 
 typedef int (*SortTupleComparator) (const SortTuple *a, const SortTuple *b,

@@ -217,6 +217,7 @@ struct Tuplesortstate
 	int			memtupcount;	/* number of tuples currently present */
 	int			memtupsize;		/* allocated length of memtuples array */
 	bool		growmemtuples;	/* memtuples' growth still underway? */
+	int			activeTuples;
 
 	/*
 	 * Memory for tuples is sometimes allocated using a simple slab allocator,
@@ -793,6 +794,7 @@ tuplesort_begin_batch(Tuplesortstate *state)
 	state->tapeset = NULL;
 
 	state->memtupcount = 0;
+	state->activeTuples = 0;
 
 	/*
 	 * Initial size of array must be more than ALLOCSET_SEPARATE_THRESHOLD;
@@ -1245,6 +1247,8 @@ tuplesort_puttuple_common(Tuplesortstate *state, SortTuple *tuple, bool useAbbre
 				Assert(state->memtupcount < state->memtupsize);
 			}
 			state->memtuples[state->memtupcount++] = *tuple;
+			tuple->isActive = true;
+			state->activeTuples++;
 
 			/*
 			 * Check if it's time to switch over to a bounded heapsort. We do
@@ -3167,9 +3171,35 @@ free_sort_tuple(Tuplesortstate *state, SortTuple *stup)
 {
 	if (stup->tuple)
 	{
+		stup->isActive = false;
+		int i = 0;
+		if ((state->memtupcount-state->activeTuples) > (work_mem/2))
+		{
+			/*
+			 * Move data to new slab
+			 */
+			SortTuple  *tempmemtuples = (SortTuple *) palloc(state->activeTuples * sizeof(SortTuple));
+			for (i=0; i < state->memtupcount; i++)
+			{
+				if (state->memtuples[i].isActive)
+				{
+					tempmemtuples->datum1 = state->memtuples[i].datum1;
+					tempmemtuples->srctape = state->memtuples[i].srctape;
+					tempmemtuples->isActive = state->memtuples[i].isActive;
+					tempmemtuples->isnull1 = state->memtuples[i].isnull1;
+					tempmemtuples[i].tuple = heap_copy_minimal_tuple((MinimalTuple) state->memtuples[i].tuple);
+				}
+			}
+			/*
+			 * Now free memtuples
+			 */
+			pfree(state->memtuples);
+			state->memtuples = tempmemtuples;
+			state->memtupcount = state->activeTuples;
+
+		}
+
 		FREEMEM(state, GetMemoryChunkSpace(stup->tuple));
-		pfree(stup->tuple);
-		stup->tuple = NULL;
 	}
 }
 
