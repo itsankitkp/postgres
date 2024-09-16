@@ -398,6 +398,7 @@
 #enable_presorted_aggregate = on
 #enable_seqscan = on
 #enable_sort = on
+#enable_sort_optimization = on
 #enable_tidscan = on
 
 # - Planner Cost Constants -
